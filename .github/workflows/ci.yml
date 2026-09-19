@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/churn-service/sha-${GITHUB_SHA}" >> "$GITHUB_ENV" #ghcr
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}" >> "$GITHUB_ENV"
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/churn-service:sha-${GITHUB_SHA}" >> "$GITHUB_ENV" #ghcr
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}" >> "$GITHUB_ENV"
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
