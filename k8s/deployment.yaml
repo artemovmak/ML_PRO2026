@@ -18,6 +18,9 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          envFrom:
+            - configMapRef: {name: churn-config}
+            - secretRef: {name: churn-service}
           startupProbe:
             httpGet: {path: /health, port: 8000}
             failureThreshold: 30

@@ -51,6 +51,77 @@ jobs:
           tags: ${{ env.IMAGE }}
           cache-from: type=gha 
           cache-to: type=gha,mode=max
+  
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions: {contents: read, packages: read}
+
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/churn-service/sha-${GITHUB_SHA}" >> "$GITHUB_ENV" #ghcr
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+
+      - uses: helm/kind-action@v1
+        with: {cluster_name: ci}
+
+      - name: образ в кластер
+        run: |
+          docker pull "$IMAGE"
+          kind load docker-image "$IMAGE" --name cli
+
+      - name: подтягиваем секреты
+        env:
+          DB_PASSWORD: $ {{ secrets.DB_PASSWORD }}
+        run: |
+          kubectl create secret generic churn-secrets \
+          --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+          --from-literal=DATABASE_URL="postgresql://postgres:$DB_PASSWORD@postgres:5432/churn"
+      
+      - name: база
+        run: |
+          kubectl apply -f k8s/postges.yaml
+          kubectl rollout status deploy/postges --timeout=180s
+      
+      - name: сервис
+        run: |
+          kubectl apply -f k8s/
+          kubectl set image deploy/churn-service api="$IMAGE"
+          kubectl rollout status deploy/churn-service --timeout=120s
+
+      - name: smoke
+        run: |
+          kubectl port-forward svc/churn-service 8080:80 &
+          sleep 5
+
+          curl --fail -s localhost:8080/health; echo
+          curl --fail -s -X POST localhost:8080/v1/predict \
+            -H "Content-Type: application/json" -d @good.json; echo
+          
+          sleep 2
+
+          kubectl exec deploy/postgres --psql -U postges -d churn \
+            -tc "SELECT count(*) FROM predictions" | grep -q 1
+      
+      - name: диагностика
+        if: failure()
+
+        run: |
+          kubectl get pods -o wide
+          kubectl describe deploy/churn-service | tail -20
+          kubectl logs deploy/churn-service --tail=30 || true
+
+      
+
+
+
+  
 
 
      
