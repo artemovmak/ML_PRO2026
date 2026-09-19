@@ -4,4 +4,4 @@ metadata:
   name: churn-config
 data:
   LOG_LEVEL: "INFO"
-  MODEL_PATH: artifacts/model.joblib
+  MODEL_PATH: artifact/model.joblib

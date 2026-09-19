@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/churn-service/sha-${GITHUB_SHA}" >> "$GITHUB_ENV" #ghcr
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/churn-service:sha-${GITHUB_SHA}" >> "$GITHUB_ENV" #ghcr
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -78,7 +78,7 @@ jobs:
 
       - name: подтягиваем секреты
         env:
-          DB_PASSWORD: $ {{ secrets.DB_PASSWORD }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           kubectl create secret generic churn-secrets \
           --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
@@ -106,7 +106,7 @@ jobs:
           
           sleep 2
 
-          kubectl exec deploy/postgres --psql -U postgres -d churn \
+          kubectl exec deploy/postgres -- psql -U postgres -d churn \
             -tc "SELECT count(*) FROM predictions" | grep -q 1
       
       - name: диагностика
