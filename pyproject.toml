@@ -1,0 +1,43 @@
+[project]
+name = "churn-service"
+version = "0.4.7"
+description = "ML Pro 1 sem"
+requires-python=">=3.11,<3.13"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-settings",
+    "pandas",
+    "scikit-learn>=1.6,<1.7",
+    "joblib",
+    "psycopg[binary]"
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+    "locust",
+    "ruff",
+]
+
+[build-system]
+requires = ["uv_build>=0.10,<0.11"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "churn"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: нужна база данных - адрес в DATABASE_URL"]
+
+[tool.ruff]
+line-length = 150
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+

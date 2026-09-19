@@ -1,0 +1,10 @@
+.venv/
+.git/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+data/
+k8s/
+tests/
+locustfile.py
