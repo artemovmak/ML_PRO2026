@@ -1,7 +1,7 @@
 [project]
 name = "churn-service"
 version = "0.4.7"
-description = "ML Pro 1 sem"
+description = "ML Pro: сервис оттока, семинар 3"
 requires-python=">=3.11,<3.13"
 
 dependencies = [
@@ -14,7 +14,9 @@ dependencies = [
     "joblib",
     "psycopg[binary]",
     "mlflow-skinny>=3.16,<4",
-    "skops>=0.16.0",
+    "skops>=0.11",
+    "prometheus-client>=0.21",
+    "prometheus-fastapi-instrumentator>=8",
 ]
 
 [dependency-groups]
