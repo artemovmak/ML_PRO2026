@@ -5,3 +5,6 @@ metadata:
 data:
   LOG_LEVEL: "INFO"
   MODEL_PATH: artifact/model.joblib
+  MLFLOW_TRACKING_URI: http://mlflow.mlops:5000
+  MODEL_NAME: churn
+  MODEL_ALIAS: champion
