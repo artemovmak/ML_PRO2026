@@ -2,13 +2,19 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-import joblib
 import pandas as pd
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from prometheus_client import Counter, Gauge, Histogram
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
 from churn import db
-from churn.config import settings
+from churn.model_store import load_model
+
+PREDICTIONS = Counter("churn_predictions_total", "Predictions by class", ["churn"])
+SCORE = Histogram("churn_score", "Predicted churn probability", buckets=[i / 10 for i in range(11)])
+MODEL_INFO = Gauge("churn_model_info", "Model loaded by this pod", ["version"])
+LATENCY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1)  # штатные 0.1, 0.5, 1 с слишком грубые
 
 
 class Features(BaseModel):
@@ -47,10 +53,8 @@ class Prediction(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    bundle = joblib.load(settings.model_path)
-    app.state.pipeline = bundle["pipeline"]
-    app.state.meta = bundle["metadata"]
-    app.state.version = bundle["metadata"]["model_version"]
+    app.state.pipeline, app.state.meta, app.state.version = load_model()
+    MODEL_INFO.labels(app.state.version).set(1)
 
     db.init()
     yield
@@ -58,6 +62,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="churn-service", version="1.0", lifespan=lifespan)
+Instrumentator().instrument(app, latency_lowr_buckets=LATENCY_BUCKETS).expose(app)
 
 @app.get("/health")
 def health():
@@ -65,7 +70,7 @@ def health():
 
 @app.get("/ready")
 def ready():
-    if getattr(app.state, "pipeline", "None") is  None:
+    if getattr(app.state, "pipeline", None) is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     return {"status": "ready"}
@@ -86,6 +91,8 @@ def predict(x: Features, bg: BackgroundTasks) -> Prediction:
     bg.add_task(db.save_prediction, request_id, payload, score, app.state.version, latency_ms)
 
     churn = score >= app.state.meta["threshold"]
+    PREDICTIONS.labels(str(churn).lower()).inc()
+    SCORE.observe(score)
 
     return Prediction(score=score, churn=churn, model_version = app.state.version, request_id=request_id, latency_ms=latency_ms)
 

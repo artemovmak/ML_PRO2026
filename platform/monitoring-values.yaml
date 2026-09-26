@@ -1,0 +1,24 @@
+# kube-prometheus-stack в облегчённом виде для kind на ноутбуке
+alertmanager:
+  enabled: false
+
+# на kind эти компоненты не отдают метрики наружу, в Prometheus были бы красные таргеты
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+nodeExporter: {enabled: false}
+
+grafana:
+  adminPassword: admin
+  grafana.ini:
+    server:
+      root_url: http://grafana.localhost
+
+prometheus:
+  prometheusSpec:
+    # брать ServiceMonitor из любых namespace, не только с меткой release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    retention: 2d
+    resources:
+      requests: {cpu: 100m, memory: 400Mi}

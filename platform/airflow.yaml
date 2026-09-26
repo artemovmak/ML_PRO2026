@@ -1,0 +1,126 @@
+# Airflow в одном поде (standalone): api-server, scheduler, dag-processor, triggerer, база SQLite.
+# Для учебного кластера этого хватает; в проде ставят официальный Helm-чарт с Postgres.
+# DAG приходят из ConfigMap airflow-dags, его создаёт и обновляет CI.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: airflow
+  namespace: mlops
+---
+# задачи KubernetesPodOperator: создать под, читать его логи, забрать XCom через exec
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-pods
+  namespace: mlops
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [create, get, list, watch, delete, patch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create, get]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-pods
+  namespace: mlops
+subjects:
+  - {kind: ServiceAccount, name: airflow, namespace: mlops}
+roleRef:
+  {apiGroup: rbac.authorization.k8s.io, kind: Role, name: airflow-pods}
+---
+# после обучения DAG перезапускает сервис в namespace default, больше ничего там не может
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: churn-rollout
+  namespace: default
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [churn-service]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-churn-rollout
+  namespace: default
+subjects:
+  - {kind: ServiceAccount, name: airflow, namespace: mlops}
+roleRef:
+  {apiGroup: rbac.authorization.k8s.io, kind: Role, name: churn-rollout}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-data
+  namespace: mlops
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 1Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow
+  namespace: mlops
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: airflow}
+  template:
+    metadata:
+      labels: {app: airflow}
+    spec:
+      serviceAccountName: airflow
+      containers:
+        - name: airflow
+          image: apache/airflow:3.3.2
+          args: [standalone]
+          env:
+            - {name: AIRFLOW__CORE__LOAD_EXAMPLES, value: "False"}
+            - {name: AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS, value: "True"}
+            - {name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN, value: sqlite:////opt/airflow/data/airflow.db}
+            - {name: AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL, value: "30"}
+            # kubelet кладёт файлы ConfigMap в скрытую папку и ссылается на неё симлинком ..data;
+            # если читать сам /opt/airflow/dags, Airflow видит одну папку дважды и падает
+            - {name: AIRFLOW__CORE__DAGS_FOLDER, value: /opt/airflow/dags/..data}
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - {name: dags, mountPath: /opt/airflow/dags}
+            - {name: data, mountPath: /opt/airflow/data}
+          readinessProbe:
+            httpGet: {path: /api/v2/monitor/health, port: 8080}
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: {cpu: 500m, memory: 1536Mi}
+            limits: {memory: 3Gi}
+      volumes:
+        - name: dags
+          configMap: {name: airflow-dags, optional: true}
+        - name: data
+          persistentVolumeClaim: {claimName: airflow-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow
+  namespace: mlops
+spec:
+  selector: {app: airflow}
+  ports:
+    - port: 8080
+      targetPort: 8080

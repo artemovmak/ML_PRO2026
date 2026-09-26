@@ -1,0 +1,10 @@
+# Кластер из одного узла. Порт 80 ноутбука (только на 127.0.0.1) ведёт в узел на порт 30080,
+# там NodePort Ingress-контроллера Traefik. Порты узла задаются только при создании кластера.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 80
+        listenAddress: "127.0.0.1"

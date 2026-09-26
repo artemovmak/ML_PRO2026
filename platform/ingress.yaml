@@ -1,0 +1,49 @@
+# Вход в платформу: один порт 80, маршрут по имени хоста. Имена *.localhost браузер и ОС
+# сами отправляют на 127.0.0.1, hosts-файл не нужен. Ingress живёт в namespace своего Service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mlflow
+  namespace: mlops
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: mlflow.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: mlflow, port: {number: 5000}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow
+  namespace: mlops
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: airflow.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: airflow, port: {number: 8080}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: monitoring-grafana, port: {number: 80}}

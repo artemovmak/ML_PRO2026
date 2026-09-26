@@ -1,0 +1,14 @@
+# Traefik как Ingress-контроллер в kind: HTTP на NodePort 30080, куда kind пробрасывает порт 80 ноутбука
+service:
+  spec:
+    type: NodePort
+
+ports:
+  web:
+    nodePort: 30080
+  websecure:
+    expose: {default: false}
+
+ingressClass:
+  name: traefik
+  isDefaultClass: true
