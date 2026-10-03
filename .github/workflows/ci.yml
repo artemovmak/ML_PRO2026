@@ -88,6 +88,10 @@ jobs:
           --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
           --from-literal=DATABASE_URL="postgresql://postgres:$DB_PASSWORD@postgres:5432/churn" \
           --dry-run=client -o yaml | kubectl apply -f -
+          # публикация рекомендаций идёт из пода Airflow в namespace mlops: ей нужен адрес базы оттуда
+          kubectl -n mlops create secret generic recs-db \
+          --from-literal=DATABASE_URL="postgresql://postgres:$DB_PASSWORD@postgres.default:5432/churn" \
+          --dry-run=client -o yaml | kubectl apply -f -
 
       - name: база
         run: |
@@ -99,6 +103,13 @@ jobs:
           kubectl apply -f k8s/
           kubectl set image deploy/churn-service api="$IMAGE"
           kubectl rollout status deploy/churn-service --timeout=180s
+
+      - name: мониторинг и DAG
+        run: |
+          kubectl apply -f k8s/monitoring/
+          kubectl -n mlops create configmap airflow-dags --from-file=dags/ \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n mlops exec deploy/airflow -- airflow variables set churn_image "$IMAGE"
 
       - name: smoke
         # через Ingress, как ходят пользователи: из сети kind узел виден по имени, Traefik слушает NodePort 30080
@@ -116,16 +127,18 @@ jobs:
           RID=$(jq -r .request_id pred.json)
           kubectl exec deploy/postgres -- psql -U postgres -d churn \
             -tAc "SELECT count(*) FROM predictions WHERE request_id = '$RID'" | grep -qx 1
-          
+
           curl --fail -s -H "$H" $U/metrics | grep -q '^churn_model_info{version="churn-v'
+
+          # рекомендации: 200 и десять товаров, если DAG уже публиковал; 503, если ещё нет. Всё остальное ошибка
+          code=$(curl -s -o rec.json -w '%{http_code}' -H "$H" $U/v1/recommend/12347); cat rec.json; echo
+          [ "$code" = 503 ] || { [ "$code" = 200 ] && jq -e '.items | length == 10' rec.json > /dev/null; }
 
       - name: диагностика
         if: failure()
         run: |
           kubectl get pods -A -o wide
+          kubectl -n mlops get secrets
           kubectl get ingress -A
           kubectl describe deploy/churn-service | tail -20
           kubectl logs deploy/churn-service --tail=50 || true
-      
-      - name: мониторинг
-        run: kubectl apply -f k8s/monitoring/
