@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 10
     permissions: {contents: read, packages: read}
     env:
-      KIND_CLUSTER: sem3n
+      KIND_CLUSTER: sem4
     steps:
       - uses: actions/checkout@v7
       - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}" >> "$GITHUB_ENV"
