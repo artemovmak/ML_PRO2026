@@ -1,0 +1,5 @@
+outs:
+- md5: 9386236bf0dc54246d68a7fb568f90fb
+  size: 3585787
+  hash: md5
+  path: online_retail.parquet
