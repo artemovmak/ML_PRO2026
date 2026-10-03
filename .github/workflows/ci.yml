@@ -117,7 +117,7 @@ jobs:
           kubectl exec deploy/postgres -- psql -U postgres -d churn \
             -tAc "SELECT count(*) FROM predictions WHERE request_id = '$RID'" | grep -qx 1
           
-          curl --fail -s -H "$H" $U/metrics | grep -q '^churn_model_info{version="churn-v'}
+          curl --fail -s -H "$H" $U/metrics | grep -q '^churn_model_info{version="churn-v'
 
       - name: диагностика
         if: failure()
