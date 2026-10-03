@@ -1,0 +1,116 @@
+# Grafana из kube-prometheus-stack подхватывает ConfigMap с меткой grafana_dashboard: "1" в namespace monitoring
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: churn-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  churn.json: |
+    {
+      "uid": "churn-service",
+      "title": "Churn service",
+      "refresh": "10s",
+      "time": {"from": "now-30m", "to": "now"},
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "Версия модели в подах",
+          "gridPos": {"x": 0, "y": 0, "w": 8, "h": 5},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"textMode": "value_and_name", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "count by (version) (churn_model_info)", "legendFormat": "{{version}}", "instant": true}]
+        },
+        {
+          "id": 2, "type": "stat", "title": "Запросов к /v1/predict за 5 минут",
+          "gridPos": {"x": 8, "y": 0, "w": 8, "h": 5},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "sum(increase(http_requests_total{handler=\"/v1/predict\"}[5m]))"}]
+        },
+        {
+          "id": 3, "type": "stat", "title": "Рестарты контейнеров сервиса",
+          "gridPos": {"x": 16, "y": 0, "w": 8, "h": 5},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"default\", container=\"api\"})"}]
+        },
+        {
+          "id": 4, "type": "timeseries", "title": "Запросы в секунду",
+          "gridPos": {"x": 0, "y": 5, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "targets": [{"refId": "A", "expr": "sum by (handler, status) (rate(http_requests_total{handler!=\"/metrics\"}[1m]))", "legendFormat": "{{handler}} {{status}}"}]
+        },
+        {
+          "id": 5, "type": "timeseries", "title": "Задержка /v1/predict",
+          "gridPos": {"x": 12, "y": 5, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "targets": [
+            {"refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(http_request_duration_seconds_bucket{handler=\"/v1/predict\"}[1m])))", "legendFormat": "p50"},
+            {"refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{handler=\"/v1/predict\"}[1m])))", "legendFormat": "p95"}
+          ]
+        },
+        {
+          "id": 6, "type": "timeseries", "title": "Доля клиентов с прогнозом «уйдёт»",
+          "gridPos": {"x": 0, "y": 13, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
+          "targets": [{"refId": "A", "expr": "sum(rate(churn_predictions_total{churn=\"true\"}[5m])) / sum(rate(churn_predictions_total[5m]))", "legendFormat": "churn=true"}]
+        },
+        {
+          "id": 7, "type": "bargauge", "title": "Распределение score за 15 минут",
+          "gridPos": {"x": 12, "y": 13, "w": 12, "h": 8},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"orientation": "vertical", "displayMode": "basic", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "sum by (le) (increase(churn_score_bucket[15m]))", "format": "heatmap", "legendFormat": "{{le}}"}]
+        },
+        {
+          "id": 8, "type": "stat", "title": "Рекомендации: какая версия отвечает",
+          "gridPos": {"x": 0, "y": 21, "w": 8, "h": 5},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"textMode": "name", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "sum by (model_version) (increase(recs_responses_total[5m])) > 0", "legendFormat": "{{model_version}}", "instant": true}]
+        },
+        {
+          "id": 9, "type": "stat", "title": "Доля запасного варианта (популярное) за 5 минут",
+          "gridPos": {"x": 8, "y": 21, "w": 8, "h": 5},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.4}, {"color": "red", "value": 0.6}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "sum(increase(recs_responses_total{source=\"popular\"}[5m])) / sum(increase(recs_responses_total[5m]))"}]
+        },
+        {
+          "id": 10, "type": "stat", "title": "Ответов 503: рекомендации не опубликованы",
+          "gridPos": {"x": 16, "y": 21, "w": 8, "h": 5},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+          "targets": [{"refId": "A", "expr": "sum(increase(http_requests_total{handler=\"/v1/recommend/{customer_id}\", status=\"5xx\"}[5m])) or vector(0)"}]
+        },
+        {
+          "id": 11, "type": "timeseries", "title": "Рекомендации в секунду по источнику",
+          "gridPos": {"x": 0, "y": 26, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "targets": [{"refId": "A", "expr": "sum by (source) (rate(recs_responses_total[1m]))", "legendFormat": "{{source}}"}]
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "Задержка /v1/recommend",
+          "gridPos": {"x": 12, "y": 26, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "targets": [
+            {"refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(http_request_duration_seconds_bucket{handler=\"/v1/recommend/{customer_id}\"}[1m])))", "legendFormat": "p50"},
+            {"refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{handler=\"/v1/recommend/{customer_id}\"}[1m])))", "legendFormat": "p95"}
+          ]
+        }
+      ]
+    }

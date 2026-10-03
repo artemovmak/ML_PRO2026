@@ -1,0 +1,62 @@
+# S3-совместимое хранилище для DVC: RustFS (Apache-2.0), замена MinIO, который перестал публиковать образы.
+# API S3 на порту 9000 (s3.localhost снаружи, rustfs.mlops:9000 изнутри кластера), веб-консоль на 9001.
+# Ключи берутся из секрета s3-credentials: его создаёт platform/up.sh, им же пользуются поды обучения.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rustfs-data
+  namespace: mlops
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 2Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rustfs
+  namespace: mlops
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: rustfs}
+  template:
+    metadata:
+      labels: {app: rustfs}
+    spec:
+      securityContext: {fsGroup: 10001}
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs:1.0.0
+          env:
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: s3-credentials, key: AWS_ACCESS_KEY_ID}}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: s3-credentials, key: AWS_SECRET_ACCESS_KEY}}
+            - {name: RUSTFS_CONSOLE_ENABLE, value: "true"}
+          ports:
+            - {name: s3, containerPort: 9000}
+            - {name: console, containerPort: 9001}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+          readinessProbe:
+            tcpSocket: {port: 9000}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 512Mi}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: rustfs-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs
+  namespace: mlops
+spec:
+  selector: {app: rustfs}
+  ports:
+    - {name: s3, port: 9000, targetPort: 9000}
+    - {name: console, port: 9001, targetPort: 9001}

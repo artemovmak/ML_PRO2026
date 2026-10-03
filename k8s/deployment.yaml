@@ -21,6 +21,9 @@ spec:
           envFrom:
             - configMapRef: {name: churn-config}
             - secretRef: {name: churn-secrets}
+          lifecycle:
+            prestop:
+              sleep: {seconds: 5}
           startupProbe:
             httpGet: {path: /health, port: 8000}
             failureThreshold: 30
