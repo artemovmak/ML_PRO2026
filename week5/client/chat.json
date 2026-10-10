@@ -1,0 +1,7 @@
+{
+  "model": "base",
+  "max_tokens": 60,
+  "messages": [
+    {"role": "user", "content": "Why would a customer who bought a red retrospot lunch bag like a retrospot cake stand? Two sentences."}
+  ]
+}

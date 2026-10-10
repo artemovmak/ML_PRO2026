@@ -1,0 +1,70 @@
+# vLLM в кластере с GPU, по образцу docs.vllm.ai/en/latest/deployment/k8s. Тот же образ и те же аргументы, что в serve.sh.
+# В kind карт нет: под честно висит в Pending с событием Insufficient nvidia.com/gpu (лекция 5.1).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 20Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # две реплики на одной карте не поместятся
+  selector:
+    matchLabels: {app: vllm}
+  template:
+    metadata:
+      labels: {app: vllm}
+    spec:
+      tolerations:
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              vllm serve Qwen/Qwen2.5-1.5B-Instruct --revision 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+              --served-model-name base --max-model-len 2048 --gpu-memory-utilization 0.90 --max-num-seqs 256
+              --enable-lora --max-lora-rank 16 --max-loras 4 --lora-modules reranker=/adapters/reranker-1.5B
+          ports:
+            - containerPort: 8000
+          resources:
+            requests: {cpu: "2", memory: 8Gi, nvidia.com/gpu: 1}
+            limits: {cpu: "8", memory: 16Gi, nvidia.com/gpu: 1}
+          volumeMounts:
+            - {name: hf-cache, mountPath: /root/.cache/huggingface}
+            - {name: adapters, mountPath: /adapters}
+            - {name: shm, mountPath: /dev/shm}
+          startupProbe:                 # веса, компиляция, CUDA-графы: минуты, не секунды
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+      volumes:
+        - name: hf-cache
+          persistentVolumeClaim: {claimName: hf-cache}
+        - name: adapters
+          configMap: {name: reranker-adapter, optional: true}   # в проде: PVC или init-контейнер из S3
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+spec:
+  selector: {app: vllm}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
